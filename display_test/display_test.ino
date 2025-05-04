@@ -21,6 +21,8 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
+
+#define SSD1306_NO_SPLASH
 #include <Adafruit_SSD1306.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -36,6 +38,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define NUMFLAKES     10 // Number of snowflakes in the animation example
+
+// THE I2C PINS FOR ESP 32 ARE 
 
 #define LOGO_HEIGHT   16
 #define LOGO_WIDTH    16
