@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">ScooterHUD needs to monitor navigation instructions from Google Maps to provide turn-by-turn directions on your scooter display.</string>
+</resources> 

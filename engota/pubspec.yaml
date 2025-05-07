@@ -34,6 +34,19 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  
+  # For bluetooth connectivity to ESP32
+  flutter_bluetooth_serial: ^0.4.0
+  
+  # For accessing Android accessibility services to read Google Maps
+  flutter_accessibility_service: ^0.2.0
+  
+  # For persistent storage
+  shared_preferences: ^2.2.2
+  
+  # For platform-specific code
+  flutter_foreground_task: ^6.5.0
+  permission_handler: ^11.1.0
 
 dev_dependencies:
   flutter_test:
