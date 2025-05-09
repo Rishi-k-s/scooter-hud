@@ -57,14 +57,24 @@ void loop() {
     String data = SerialBT.readStringUntil('\n');
     Serial.println("Received: " + data);
     
-    // Parse the data - expected format: DIRECTION|DISTANCE|ETA
+    // Parse the data - format: DISTANCE|DIRECTION|ETA
     int firstSeparator = data.indexOf('|');
     int secondSeparator = data.lastIndexOf('|');
     
     if (firstSeparator != -1 && secondSeparator != -1 && firstSeparator != secondSeparator) {
-      direction = data.substring(0, firstSeparator);
-      distance = data.substring(firstSeparator + 1, secondSeparator);
+      distance = data.substring(0, firstSeparator);
+      direction = data.substring(firstSeparator + 1, secondSeparator);
       eta = data.substring(secondSeparator + 1);
+      
+      // Clean up empty or "NO DATA" values
+      if (distance.length() == 0 || distance == "NO DATA") distance = "---";
+      if (direction.length() == 0 || direction == "NO DATA") direction = "---";
+      if (eta.length() == 0 || eta == "NO DATA") eta = "---";
+      
+      // Debug print
+      Serial.println("Parsed - Distance: " + distance);
+      Serial.println("Parsed - Direction: " + direction);
+      Serial.println("Parsed - ETA: " + eta);
       
       // Update the display
       updateDisplay();
@@ -78,9 +88,12 @@ void loop() {
 void updateDisplay() {
   display.clearDisplay();
   
-  // Draw direction information
+  // Draw direction information (larger text)
   display.setTextSize(2);
   display.setCursor(0, 0);
+  if (direction.length() > 10) {
+    display.setTextSize(1);  // Smaller text for long directions
+  }
   display.println(direction);
   
   // Draw a line separator
@@ -97,13 +110,17 @@ void updateDisplay() {
   display.print(F("ETA: "));
   display.println(eta);
   
-  // Show special icon or indicator if needed
-  if (direction == "LEFT" || direction == "TURN LEFT") {
+  // Show direction indicator
+  String dir = direction;
+  dir.toUpperCase();
+  if (dir.indexOf("LEFT") != -1) {
     drawLeftArrow();
-  } else if (direction == "RIGHT" || direction == "TURN RIGHT") {
+  } else if (dir.indexOf("RIGHT") != -1) {
     drawRightArrow();
-  } else if (direction == "STRAIGHT" || direction == "CONTINUE") {
+  } else if (dir.indexOf("STRAIGHT") != -1 || dir.indexOf("CONTINUE") != -1) {
     drawStraightArrow();
+  } else if (dir.indexOf("SOUTHWEST") != -1) {
+    drawSouthwestArrow();
   }
   
   // Update the display
@@ -129,4 +146,11 @@ void drawStraightArrow() {
   int x = 106;
   int y = 40;
   display.fillTriangle(x, y, x-8, y+12, x+8, y+12, SSD1306_WHITE);
+}
+
+void drawSouthwestArrow() {
+  int x = 106;
+  int y = 45;
+  // Draw a diagonal arrow pointing southwest
+  display.fillTriangle(x, y, x-8, y-8, x+8, y+8, SSD1306_WHITE);
 }

@@ -41,6 +41,9 @@ dependencies:
   # For accessing Android accessibility services to read Google Maps
   flutter_accessibility_service: ^0.2.0
   
+  # For notification listening (to extract Google Maps navigation data)
+  notification_listener_service: ^0.3.4
+  
   # For persistent storage
   shared_preferences: ^2.2.2
   

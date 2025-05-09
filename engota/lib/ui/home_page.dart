@@ -8,7 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../accessibility_service.dart';
-import '../main.dart';
+import '../notification_maps_reader.dart';
+import '../main.dart' show startCallback;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,9 +33,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String _currentEta = "NO DATA";
   bool _isServiceRunning = false;
   bool _isAccessibilityEnabled = false;
+  bool _isNotificationEnabled = false;
   
-  // Maps reader instance
+  // Service instances
   final GoogleMapsReader _mapsReader = GoogleMapsReader();
+  final GoogleMapsNotificationReader _notificationReader = GoogleMapsNotificationReader();
   
   // Timer for periodic updates to ESP32
   Timer? _updateTimer;
@@ -56,8 +59,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Then initialize Bluetooth
     await _initBluetooth();
     
-    // Check accessibility after permissions
+    // Check services permissions
     await _checkAccessibilityPermission();
+    await _checkNotificationPermission();
     
     // Initialize foreground task
     _initForegroundTask();
@@ -71,6 +75,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   
   // Setup the navigation data listeners
   void _setupNavigationListeners() {
+    // Accessibility service listeners
     _mapsReader.directionStream.listen((direction) {
       setState(() {
         _currentDirection = direction;
@@ -91,6 +96,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
       _sendDataToESP32();
     });
+    
+    // Notification service listeners
+    _notificationReader.directionStream.listen((direction) {
+      setState(() {
+        _currentDirection = direction;
+      });
+      _sendDataToESP32();
+    });
+    
+    _notificationReader.distanceStream.listen((distance) {
+      setState(() {
+        _currentDistance = distance;
+      });
+      _sendDataToESP32();
+    });
+    
+    _notificationReader.etaStream.listen((eta) {
+      setState(() {
+        _currentEta = eta;
+      });
+      _sendDataToESP32();
+    });
   }
   
   @override
@@ -106,6 +133,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkBluetoothConnection();
       _checkAccessibilityPermission();
+      _checkNotificationPermission();
       _checkServiceStatus();
     }
   }
@@ -272,6 +300,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
         Permission.location,
+        Permission.notification,
       ].request();
       
       // Log the results for debugging
@@ -292,9 +321,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       print("Accessibility service status checked: $_isAccessibilityEnabled");
     } catch (e) {
       print("Error checking accessibility permission: $e");
-      // Don't change state on error, assume not enabled
       setState(() {
         _isAccessibilityEnabled = false;
+      });
+    }
+  }
+  
+  Future<void> _checkNotificationPermission() async {
+    try {
+      bool isEnabled = await _notificationReader.startListening();
+      setState(() {
+        _isNotificationEnabled = isEnabled;
+      });
+      print("Notification service status checked: $_isNotificationEnabled");
+    } catch (e) {
+      print("Error checking notification permission: $e");
+      setState(() {
+        _isNotificationEnabled = false;
       });
     }
   }
@@ -311,11 +354,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       print("Accessibility permission request completed. Enabled: $_isAccessibilityEnabled");
     } catch (e) {
       print("Error requesting accessibility permission: $e");
-      // Show a snackbar with error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error enabling accessibility: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _requestNotificationPermission() async {
+    try {
+      print("Requesting notification permission");
+      bool isEnabled = await _notificationReader.startListening();
+      setState(() {
+        _isNotificationEnabled = isEnabled;
+      });
+      print("Notification permission request completed. Enabled: $_isNotificationEnabled");
+    } catch (e) {
+      print("Error requesting notification permission: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error enabling notification access: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -356,14 +419,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
   
   Future<void> _startService() async {
-    if (!_isAccessibilityEnabled) {
-      await _requestAccessibilityPermission();
-      if (!_isAccessibilityEnabled) {
-        return;
-      }
+    bool servicesStarted = false;
+    
+    // Try to start notification service first
+    if (!_isNotificationEnabled) {
+      await _requestNotificationPermission();
     }
     
-    bool mapsStarted = await _mapsReader.startListening();
+    // If notification service fails, try accessibility service
+    if (!_isNotificationEnabled && !_isAccessibilityEnabled) {
+      await _requestAccessibilityPermission();
+    }
+    
+    // Start the appropriate service
+    if (_isNotificationEnabled) {
+      servicesStarted = await _notificationReader.startListening();
+    } else if (_isAccessibilityEnabled) {
+      servicesStarted = await _mapsReader.startListening();
+    }
     
     try {
       // Start the foreground service with high priority to avoid being killed
@@ -378,21 +451,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _updateTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
         print("Periodic check of connections");
         _checkAccessibilityPermission();
+        _checkNotificationPermission();
         _checkBluetoothConnection();
         _sendDataToESP32();
       });
       
     } catch (e) {
       print('Error starting foreground service: $e');
-      // Continue even if foreground service fails
     }
     
-    if (mapsStarted) {
+    if (servicesStarted) {
       setState(() {
         _isServiceRunning = true;
-        _currentDirection = _mapsReader.currentDirection;
-        _currentDistance = _mapsReader.currentDistance;
-        _currentEta = _mapsReader.currentEta;
+        if (_isNotificationEnabled) {
+          _currentDirection = _notificationReader.currentDirection;
+          _currentDistance = _notificationReader.currentDistance;
+          _currentEta = _notificationReader.currentEta;
+        } else {
+          _currentDirection = _mapsReader.currentDirection;
+          _currentDistance = _mapsReader.currentDistance;
+          _currentEta = _mapsReader.currentEta;
+        }
       });
       
       // Send initial data
@@ -402,12 +481,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   
   void _stopService() async {
     _mapsReader.stopListening();
+    _notificationReader.stopListening();
     
     try {
       await FlutterForegroundTask.stopService();
     } catch (e) {
       print('Error stopping foreground service: $e');
-      // Continue even if stopping the service fails
     }
     
     setState(() {
@@ -419,6 +498,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     
     // Send updated (empty) data
     _sendDataToESP32();
+  }
+
+  // Add this method to get the appropriate icon for each direction
+  Widget _getDirectionIcon(String direction) {
+    const double iconSize = 32.0;
+    const Color iconColor = Colors.blue;
+    
+    switch (direction.toUpperCase()) {
+      case 'LEFT':
+        return const Icon(Icons.turn_left, size: iconSize, color: iconColor);
+      case 'RIGHT':
+        return const Icon(Icons.turn_right, size: iconSize, color: iconColor);
+      case 'STRAIGHT':
+        return const Icon(Icons.straight, size: iconSize, color: iconColor);
+      case 'NORTH':
+        return const Icon(Icons.arrow_upward, size: iconSize, color: iconColor);
+      case 'SOUTH':
+        return const Icon(Icons.arrow_downward, size: iconSize, color: iconColor);
+      case 'EAST':
+        return const Icon(Icons.arrow_forward, size: iconSize, color: iconColor);
+      case 'WEST':
+        return const Icon(Icons.arrow_back, size: iconSize, color: iconColor);
+      case 'U-TURN':
+        return const Icon(Icons.u_turn_left, size: iconSize, color: iconColor);
+      case 'ROUNDABOUT':
+        return const Icon(Icons.roundabout_left, size: iconSize, color: iconColor);
+      case 'EXIT':
+        return const Icon(Icons.exit_to_app, size: iconSize, color: iconColor);
+      case 'ARRIVE':
+        return const Icon(Icons.place, size: iconSize, color: iconColor);
+      default:
+        return const Icon(Icons.directions, size: iconSize, color: iconColor);
+    }
   }
 
   @override
@@ -480,17 +592,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Text('Notification Service:'),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isNotificationEnabled ? 'Enabled' : 'Disabled',
+                          style: TextStyle(
+                            color: _isNotificationEnabled ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _isServiceRunning ? _stopService : _startService,
                       child: Text(_isServiceRunning ? 'Stop Service' : 'Start Service'),
                     ),
-                    if (!_isAccessibilityEnabled)
+                    if (!_isAccessibilityEnabled && !_isNotificationEnabled)
                       Padding(
                         padding: const EdgeInsets.only(top: 8.0),
-                        child: ElevatedButton(
-                          onPressed: _requestAccessibilityPermission,
-                          child: const Text('Enable Accessibility Service'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _requestNotificationPermission,
+                              child: const Text('Enable Notification Service'),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: _requestAccessibilityPermission,
+                              child: const Text('Enable Accessibility Service'),
+                            ),
+                          ],
                         ),
                       ),
                   ],
@@ -624,12 +760,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  _currentDirection,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  children: [
+                                    _getDirectionIcon(_currentDirection),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _currentDirection,
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

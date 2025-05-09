@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'accessibility_service.dart';
+import 'notification_maps_reader.dart';
 import 'ui/home_page.dart';
 
 // Simple task handler for foreground service
@@ -34,7 +35,7 @@ class SimpleTaskHandler extends TaskHandler {
     print("Repeating event");
     // Keep the connection to Google Maps alive by requesting focus periodically
     try {
-      // Check and ensure the accessibility service is running
+      // Check and ensure the services are running
       if (sendPort != null) {
         sendPort.send('Keep alive');
       }
@@ -75,6 +76,7 @@ void main() async {
     Permission.bluetoothScan,
     Permission.bluetoothConnect,
     Permission.location,
+    Permission.notification,  // Add notification permission
   ].request();
   
   // Run the app
