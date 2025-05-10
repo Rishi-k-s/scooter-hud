@@ -7,7 +7,9 @@ char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursd
 
 void setup () {
   Serial.begin(115200);
-  Wire.begin(16, 17);
+  Serial.println("suiiiiii");
+  Serial.print(rtc.begin());
+  // Wire.begin(16, 17);
 
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
@@ -19,6 +21,7 @@ void setup () {
     Serial.println("RTC lost power, let's set the time!"); 
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
+    Serial.println(F(__TIME__));
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     // This line sets the RTC with an explicit date & time, for example to set
     // January 21, 2014 at 3am you would call:
